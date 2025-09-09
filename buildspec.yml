@@ -1,36 +1,47 @@
-version: 0.2
-phases:
-  pre_build:
+version: 0.2   # Version du format buildspec (0.2 est la plus courante)
+
+phases:        # Les différentes phases du build (pre_build, build, post_build)
+  pre_build:   # Phase de préparation (avant compilation / build Docker)
     commands:
-      - echo Logging in to Amazon ECR....
-      - aws --version
-      #- $(aws ecr get-login --region ap-south-1 --no-include-email)
+      - echo Logging in to Amazon ECR....   # Message de log
+      - aws --version                       # Vérifie la version de l’AWS CLI
       - aws ecr get-login-password --region us-east-2 | docker login --username AWS --password-stdin 767398064904.dkr.ecr.us-east-2.amazonaws.com
-      - # Replace with this to your repository URI
+      # Récupère un token ECR et connecte Docker au registre Amazon ECR
       - REPOSITORY_URI=767398064904.dkr.ecr.us-east-2.amazonaws.com/spring-demo-ecr
+      # Définit l’URI complet du repository ECR
       - IMAGE_TAG=build-$(echo $CODEBUILD_BUILD_ID | awk -F":" '{print $2}')
-  build:
+      # Génère un tag unique basé sur l’ID du build (ex: build-1234abcd)
+
+  build:       # Phase de build (compilation et création image Docker)
     commands:
-      - echo Build started on `date`
-      - echo building the Jar file
-      - mvn clean install
-      - echo Building the Docker image...
+      - echo Build started on `date`        # Logue la date/heure du début du build
+      - echo building the Jar file          # Message de log
+      - mvn clean install                   # Compile le projet Java et génère le JAR
+      - echo Building the Docker image...   # Message de log
       - docker build -t $REPOSITORY_URI:latest .
+      # Construit l’image Docker avec le tag :latest
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-  post_build:
+      # Ajoute un second tag immuable basé sur l’ID du build
+
+  post_build:  # Phase après le build (push et préparation du déploiement)
     commands:
-      - echo Build completed on `date`
-      - echo pushing to repo
-      - docker push $REPOSITORY_URI:latest
+      - echo Build completed on `date`      # Logue la date/heure de fin du build
+      - echo pushing to repo                # Message de log
+      - docker push $REPOSITORY_URI:latest  # Pousse l’image taguée latest vers ECR
       - docker push $REPOSITORY_URI:$IMAGE_TAG
+      # Pousse l’image avec le tag unique vers ECR
       - echo Writing image definitions file...
+      # Prépare le fichier imagedefinitions.json pour ECS
       # Give your container name
       - DOCKER_CONTAINER_NAME=spring-demo-ecr
+      # Nom du container (doit correspondre à la Task Definition ECS)
       - printf '[{"name":"%s","imageUri":"%s"}]' $DOCKER_CONTAINER_NAME $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
-      - echo $DOCKER_CONTAINER_NAME
-      - echo printing imagedefinitions.json
-      - cat imagedefinitions.json
-artifacts:
+      # Crée le fichier imagedefinitions.json attendu par CodePipeline/CodeDeploy
+      - echo $DOCKER_CONTAINER_NAME          # Affiche le nom du container
+      - echo printing imagedefinitions.json # Message de log
+      - cat imagedefinitions.json            # Affiche le contenu du fichier dans les logs
+
+artifacts:    # Définition des fichiers à exporter comme artefacts de build
   files:
-    - imagedefinitions.json
-    - target/springboot-aws-deploy.jar
+    - imagedefinitions.json                 # Utilisé pour le déploiement ECS
+    - target/springboot-aws-deploy.jar      # JAR compilé par Maven
